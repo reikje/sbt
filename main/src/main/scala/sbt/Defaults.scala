@@ -1197,7 +1197,25 @@ object Classpaths
 		val transform: UpdateReport => UpdateReport = r => substituteScalaFiles(scalaOrganization.value, r)(subScalaJars)
 
 		val show = Reference.display(thisProjectRef.value)
-		cachedUpdate(s.cacheDirectory, show, ivyModule.value, updateConfiguration.value, transform, skip = (skip in update).value, force = isRoot, depsUpdated = depsUpdated, log = s.log)
+		val result = cachedUpdate(s.cacheDirectory, show, ivyModule.value, updateConfiguration.value, transform, skip = (skip in update).value, force = isRoot, depsUpdated = depsUpdated, log = s.log)
+		warnEvicted(result, s)
+		result
+	}
+
+	// TODO - Evicted warning filters + enable settings.
+	// TODO - Possibly pass in the direct library dependencies and only warn on evicting something directly
+	//        depended on, like Scala.
+	def warnEvicted(report: UpdateReport, s: TaskStreams): Unit = {
+		val shownConfigurations = Seq(Compile, Test, Runtime)
+		def isConfigurationIncluded(c: ConfigurationReport): Boolean =
+		   shownConfigurations exists (_.name == c.configuration)
+		val evicted: Set[ModuleID] = (report.configurations filter isConfigurationIncluded flatMap (_.evicted))(collection.breakOut)
+		if(!evicted.isEmpty) {
+		  s.log.warn("Some dependencies were evicted: ")
+		  for {
+		  	m <- evicted
+		  } s.log.warn(s" * ${m}")
+		}
 	}
 
 	def cachedUpdate(cacheFile: File, label: String, module: IvySbt#Module, config: UpdateConfiguration, transform: UpdateReport=>UpdateReport, skip: Boolean, force: Boolean, depsUpdated: Boolean, log: Logger): UpdateReport =
