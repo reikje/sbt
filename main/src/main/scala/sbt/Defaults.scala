@@ -1209,11 +1209,29 @@ object Classpaths
 		val shownConfigurations = Seq(Compile, Test, Runtime)
 		def isConfigurationIncluded(c: ConfigurationReport): Boolean =
 		   shownConfigurations exists (_.name == c.configuration)
-		val evicted: Set[ModuleID] = (report.configurations filter isConfigurationIncluded flatMap (_.evicted))(collection.breakOut)
-		if(!evicted.isEmpty) {
+		def key(m: ModuleID): String = s"${m.organization}:${m.name}"
+		def evictionString(c: ConfigurationReport, mkey: String): String = {
+			c.modules find { m => key(m.module) == mkey } match {
+				case Some(m) => 
+                   val lostVersions = c.evicted filter { m => key(m) == mkey} map (_.revision) 
+                   // TODO - Only display if we have reason too (crossing binary revisions perhaps...)
+				   s"${m.module.organization}:${m.module.name}:${m.module.revision}) replaces ${lostVersions.mkString("(", ", ", ")")}"
+				case None => ""
+			}
+		}
+		val evictedNotices: Seq[String] = 
+			for {
+				config <- report.configurations
+				if isConfigurationIncluded(config)
+				key <- (config.evicted map key).distinct
+				result = evictionString(config, key)
+				if ! result.isEmpty
+			} yield result
+		  //(report.configurations filter isConfigurationIncluded flatMap (_.evicted))(collection.breakOut)
+		if(!evictedNotices.isEmpty) {
 		  s.log.warn("Some dependencies were evicted: ")
 		  for {
-		  	m <- evicted
+		  	m <- evictedNotices.distinct
 		  } s.log.warn(s" * ${m}")
 		}
 	}
